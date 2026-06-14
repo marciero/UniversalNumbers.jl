@@ -192,9 +192,7 @@ src/libuniversal_wrapper.cpp   C ABI bridge (compiled into UniversalNumbers_jll)
 test/runtests.jl               Test suite
 test/test_printbits.jl         Bit-inspection demo
 test/test_la.jl                Linear algebra demo
-docs/parametric-types.md       Design note: parametric type system
 CONTRIBUTING.md                Adding types, building from source, JLL workflow
-ROADMAP.md                     Phase 1 (local) / Phase 2 (JLL + General Registry)
 ```
 
 ## License
