@@ -1,10 +1,13 @@
 # UniversalNumbers.jl
 
+[![CI](https://github.com/jamesquinlan/UniversalNumbers.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/jamesquinlan/UniversalNumbers.jl/actions/workflows/ci.yml)
+
 Julia bindings for the [Stillwater Universal](https://github.com/stillwater-sc/universal)
 C++ number-systems library. Exposes **posits**, **classic floats (cfloat)**,
-**logarithmic number systems (LNS)**, **takum**, **IBM hex float (hfloat)**, and
+**logarithmic number systems (LNS)**, **takums**, **IBM hex float (hfloat)**, and
 **decimal float (dfloat)** as first-class Julia numbers that implement `AbstractFloat`
 and compose with the standard library.
+
 
 ## Installation
 
@@ -12,8 +15,19 @@ and compose with the standard library.
 pkg> add UniversalNumbers
 ```
 
-Requires Julia ≥ 1.9. The pre-built bridge library is downloaded automatically via
+Requires Julia ≥ 1.10. The pre-built bridge library is downloaded automatically via
 `UniversalNumbers_jll`; no C++ compiler or CMake is needed.
+
+### Docker (build from source)
+
+A [`Dockerfile`](Dockerfile) builds the C++ bridge and a ready-to-use Julia
+environment — no local C++ toolchain or Julia install needed:
+
+```bash
+docker build -t universalnumbers .
+docker run --rm -it universalnumbers                                # Julia REPL with the package
+docker run --rm -it universalnumbers julia --project=. test/runtests.jl   # run the test suite
+```
 
 ## Quick start
 
@@ -23,8 +37,8 @@ using UniversalNumbers
 a = Posit{16,1}(1.5)
 b = Posit{16,1}(2.5)
 a + b                        # Posit{16,1}(4.0)
-sqrt(Posit{32,2}(2.0))      # Posit{32,2}(1.4142135623842478)
-a + 2.5                      # promotes 2.5 → Posit{16,1}: Posit{16,1}(4.0)
+sqrt(Posit{32,2}(2.0))       # Posit{32,2}(1.4142135623842478)
+a + 2.5                      # promotes 2.5 -> Posit{16,1}: Posit{16,1}(4.0)
 
 using LinearAlgebra
 A = [Posit{32,2}(4) Posit{32,2}(1); Posit{32,2}(1) Posit{32,2}(3)]
@@ -38,27 +52,39 @@ Each type is a Julia `AbstractFloat` subtype backed by a specific Universal C++
 template instantiation. The type parameters are always integers (no trailing
 block-type argument needed from user code).
 
-| Julia type | Universal C++ type | Total bits | Notes |
+| Julia type | Universal C++ type | Bits | Notes |
 |---|---|---|---|
-| `Posit{8,0}` | `posit<8, 0>` | 8 | |
-| `Posit{16,1}` | `posit<16, 1>` | 16 | |
-| `Posit{32,2}` | `posit<32, 2>` | 32 | |
-| `Posit{19,2}` | `posit<19, 2>` | 19 (in 32-bit word) | |
-| `Posit{19,3}` | `posit<19, 3>` | 19 (in 32-bit word) | |
-| `CFloat{8,2}` | `cfloat<8, 2>` | 8 | quarter precision |
-| `CFloat{8,3}` | `cfloat<8, 3>` | 8 | |
-| `CFloat{8,4}` | `cfloat<8, 4>` | 8 | |
-| `CFloat{16,5}` | `cfloat<16, 5>` | 16 | half precision |
-| `LNS{16,5}` | `lns<16, 5>` | 16 | |
-| `LNS{32,16}` | `lns<32, 16>` | 32 | |
-| `Takum{8}` | `takum<8, 3>` | 8 | rbits=3 fixed by standard |
-| `Takum{16}` | `takum<16, 3>` | 16 | rbits=3 fixed by standard |
-| `Takum{32}` | `takum<32, 3>` | 32 | rbits=3 fixed by standard |
-| `HFloat{6,7}` | `hfloat<6, 7>` | 32 | IBM hfp32; no NaN/Inf |
-| `HFloat{14,7}` | `hfloat<14, 7>` | 64 | IBM hfp64; no NaN/Inf |
-| `DFloat{7,6}` | `dfloat<7, 6, BID>` | 32 | IEEE 754-2008 decimal32 |
-| `DFloat{16,8}` | `dfloat<16, 8, BID>` | 64 | IEEE 754-2008 decimal64 |
-| `DD` | `dd` | 128 | double-double; ~106 significand bits |
+| `Posit{8,0}` | `posit<8,0>` | 8 | LUT-accelerated |
+| `Posit{8,1}` | `posit<8,1>` | 8 | LUT-accelerated |
+| `Posit{8,2}` | `posit<8,2>` | 8 | LUT-accelerated |
+| `Posit{12,1}` | `posit<12,1>` | 12 (16-bit word) | |
+| `Posit{16,1}` | `posit<16,1>` | 16 | |
+| `Posit{16,2}` | `posit<16,2>` | 16 | |
+| `Posit{19,2}` | `posit<19,2>` | 19 (32-bit word) | |
+| `Posit{19,3}` | `posit<19,3>` | 19 (32-bit word) | |
+| `Posit{32,2}` | `posit<32,2>` | 32 | |
+| `Posit{64,2}` | `posit<64,2>` | 64 | |
+| `Posit{64,3}` | `posit<64,3>` | 64 | |
+| `CFloat{8,2}` | `cfloat<8,2>` | 8 | LUT-accelerated |
+| `CFloat{8,3}` | `cfloat<8,3>` | 8 | LUT-accelerated; alias `E3M4` |
+| `CFloat{8,4}` | `cfloat<8,4>` | 8 | LUT-accelerated; alias `E4M3` |
+| `CFloat{8,5}` | `cfloat<8,5>` | 8 | LUT-accelerated; alias `E5M2` |
+| `CFloat{24,5}` | `cfloat<24,5>` | 24 (32-bit word) | |
+| `LNS{16,5}` | `lns<16,5>` | 16 | multiply/divide exact in log domain |
+| `LNS{32,16}` | `lns<32,16>` | 32 | multiply/divide exact in log domain |
+| `Takum{8}` | `takum<8,3>` | 8 | LUT-accelerated; rbits=3 per standard |
+| `Takum{16}` | `takum<16,3>` | 16 | rbits=3 per standard |
+| `Takum{32}` | `takum<32,3>` | 32 | rbits=3 per standard |
+| `Takum{64}` | `takum<64,3>` | 64 | rbits=3 per standard |
+| `Fixed{8,4}` | `fixpnt<8,4>` | 8 | LUT-accelerated; 4 fractional bits; modular |
+| `Fixed{16,8}` | `fixpnt<16,8>` | 16 | 8 fractional bits; modular |
+| `Fixed{32,16}` | `fixpnt<32,16>` | 32 | 16 fractional bits; modular |
+| `HFloat{6,7}` | `hfloat<6,7>` | 32 | IBM hfp32; no NaN/Inf |
+| `HFloat{14,7}` | `hfloat<14,7>` | 64 | IBM hfp64; no NaN/Inf |
+| `DFloat{7,6}` | `dfloat<7,6,BID>` | 32 | IEEE 754-2008 decimal32 |
+| `DFloat{16,8}` | `dfloat<16,8,BID>` | 64 | IEEE 754-2008 decimal64 |
+| `BF16` | `bfloat16` | 16 | Google Brain float; same exponent range as Float32 |
+| `DD` | `dd` | 128 | double-double; ~31 decimal digits (~106 bits) |
 
 Using an unregistered combination raises an informative error:
 
@@ -119,7 +145,8 @@ true
 
 ## Posit number-system properties
 
-All follow from the posit standard with useed = 2^(2^es); verified by the test suite.
+All properties follow from the posit standard (useed = 2^(2^ES)); all registered types
+are verified by the test suite.
 
 - **Reciprocal symmetry**: `floatmin(T) * floatmax(T) == 1.0` exactly — every dynamic-range
   extreme has an exact reciprocal. IEEE `Float16` gives `floatmin * floatmax ≈ 4`.
@@ -129,10 +156,17 @@ All follow from the posit standard with useed = 2^(2^es); verified by the test s
 
 | Type | useed | maxpos | minpos | minpos·maxpos |
 |---|---|---|---|---|
-| `Posit{8,0}` | 2 | 2^6 = 64 | 2^−6 ≈ 0.016 | 1.0 |
+| `Posit{8,0}` | 2 | 2^6 = 64 | 2^−6 ≈ 1.56e-2 | 1.0 |
+| `Posit{8,1}` | 4 | 4^6 = 4096 | 4^−6 ≈ 2.44e-4 | 1.0 |
+| `Posit{8,2}` | 16 | 16^6 ≈ 1.68e7 | 16^−6 ≈ 5.96e-8 | 1.0 |
+| `Posit{12,1}` | 4 | 4^10 ≈ 1.05e6 | 4^−10 ≈ 9.54e-7 | 1.0 |
 | `Posit{16,1}` | 4 | 4^14 ≈ 2.68e8 | 4^−14 ≈ 3.73e-9 | 1.0 |
-| `Posit{32,2}` | 16 | 16^30 ≈ 1.33e36 | 16^−30 ≈ 7.52e-37 | 1.0 |
+| `Posit{16,2}` | 16 | 16^14 ≈ 7.21e16 | 16^−14 ≈ 1.39e-17 | 1.0 |
+| `Posit{19,2}` | 16 | 16^17 ≈ 2.95e20 | 16^−17 ≈ 3.39e-21 | 1.0 |
 | `Posit{19,3}` | 256 | 256^17 ≈ 8.71e40 | 256^−17 ≈ 1.15e-41 | 1.0 |
+| `Posit{32,2}` | 16 | 16^30 ≈ 1.33e36 | 16^−30 ≈ 7.52e-37 | 1.0 |
+| `Posit{64,2}` | 16 | 16^62 ≈ 4.52e74 | 16^−62 ≈ 2.21e-75 | 1.0 |
+| `Posit{64,3}` | 256 | 256^62 ≈ 2.05e149 | 256^−62 ≈ 4.90e-150 | 1.0 |
 
 ## Linear algebra
 
@@ -189,12 +223,100 @@ Field coloring by family:
 ```
 src/UniversalNumbers.jl        Julia module (parametric types, ccall dispatch)
 src/libuniversal_wrapper.cpp   C ABI bridge (compiled into UniversalNumbers_jll)
-test/runtests.jl               Test suite
-test/test_printbits.jl         Bit-inspection demo
-test/test_la.jl                Linear algebra demo
+test/runtests.jl               Test entry point
+test/posits.jl                 Posit arithmetic, LA, adjacent-value tests
+test/takums.jl                 Takum arithmetic tests
+test/lns.jl                    LNS arithmetic tests
+test/la.jl                     Cross-family linear algebra tests
+test/printbits.jl              Bit-inspection tests
+test/broadcasting.jl           Broadcasting and array tests
+examples/chebyshev.jl          Chebyshev nodes and approximation
+examples/lorenz.jl             Lorenz attractor visualization
 CONTRIBUTING.md                Adding types, building from source, JLL workflow
+```
+
+## References and Citations (bibTeX)
+
+```bibtex
+
+@article{gustafson2017beating,
+  title   = {Beating Floating Point at its Own Game: Posit Arithmetic},
+  author  = {Gustafson, John L. and Yonemoto, Isaac},
+  journal = {Supercomputing Frontiers and Innovations},
+  volume  = {4},
+  number  = {2},
+  pages   = {71--86},
+  year    = {2017}
+}
+
+@article{hunhold2024takum,
+  title   = {Beating Posits at Their Own Game: Takum Arithmetic},
+  author  = {Hunhold, Laslo},
+  journal = {Next Generation Arithmetic (CoNGA)},
+  year    = {2024},
+  note    = {Lecture Notes in Computer Science, Springer}
+}
+
+@techreport{ieee754_2019,
+  author      = {{IEEE}},
+  title       = {{IEEE} Standard for Floating-Point Arithmetic},
+  institution = {Institute of Electrical and Electronics Engineers},
+  year        = {2019},
+  number      = {IEEE Std 754-2019},
+  month       = jul,
+  doi         = {10.1109/IEEESTD.2019.8766229},
+  pages       = {1--84}
+}
+
+@article{julia_lang,
+  author  = {Jeff Bezanson and Alan Edelman and Stefan Karpinski and Viral B. Shah},
+  title   = {Julia: A Fresh Approach to Numerical Computing},
+  journal = {SIAM Review},
+  year    = {2017}
+}
+
+@article{omtzigt2023universal,
+  title={Universal Numbers Library: Multi-format Variable Precision Arithmetic Library},
+  author={Omtzigt, E Theodore L and Quinlan, James},
+  journal={Journal of Open Source Software},
+  volume={8},
+  number={83},
+  pages={5072},
+  year={2023}
+}
+
+@techreport{positstandard2022,
+  title       = {Standard for Posit\textsuperscript{TM} Arithmetic (2022)},
+  author      = {{Posit Working Group}},
+  institution = {National Supercomputing Centre (NSCC) Singapore},
+  year        = {2022},
+  month       = {March}
+}
+
+@article{wang2019bfloat16,
+  title={BFloat16: The secret to high performance on Cloud TPUs},
+  author={Wang, Shibo and Kanwar, Pankaj},
+  journal={Google Cloud Blog},
+  volume={4},
+  number={1},
+  year={2019}
+}
+
+ 
+
+
 ```
 
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
+
+### Bundled third-party code
+
+This package vendors the header-only [Stillwater Universal](https://github.com/stillwater-sc/universal)
+library under [`deps/universal/`](deps/universal/), which provides the underlying
+number-system implementations. Universal is distributed under the MIT License,
+© 2017 Stillwater Supercomputing, Inc.; its license is retained at
+[`deps/universal/LICENSE`](deps/universal/LICENSE) and provenance (the exact
+vendored upstream commit) is recorded in
+[`deps/universal/VENDORED.md`](deps/universal/VENDORED.md).

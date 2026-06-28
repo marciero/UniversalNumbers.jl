@@ -28,7 +28,7 @@ julia --project=. test/test_printbits.jl  # bit-inspection demo
 julia --project=. test/test_la.jl         # linear algebra demo
 ```
 
-## Adding a new type — worked example
+## Adding a new type -- worked example
 
 This section walks through adding `CFloat{23,7}` (a 32-bit classic float with 7 exponent
 bits and subnormals enabled) as a complete, concrete example. Every other type follows
@@ -55,9 +55,9 @@ Look up or derive the C++ template instantiation for the type you want.
 
 For most types, IT equals the block type. The exception is multi-word types where the
 C++ block type is smaller than the total size (e.g. `hfp64` is 64 bits but uses
-`uint32_t` blocks — IT must be `uint64_t`). See the design note at the end of this section.
+`uint32_t` blocks -- IT must be `uint64_t`). See the design note at the end of this section.
 
-**Choose a C symbol name** — the convention is `<family><nbits>_<param>`:
+**Choose a C symbol name** -- the convention is `<family><nbits>_<param>`:
 - `cfloat32_7` for `CFloat{23,7}` (using nbits=32, exponent=7)
 
 ### Step 2: register on the C++ side
@@ -75,7 +75,7 @@ Open `src/libuniversal_wrapper.cpp` and add one line to `TYPE_REGISTRY_FULL`:
 
 That single line causes the X-macro to stamp out all ~20 `extern "C"` bridge functions
 (`cfloat32_7_from_double`, `cfloat32_7_add`, `cfloat32_7_sqrt`, `cfloat32_7_sin`, …)
-automatically — no other C++ changes needed.
+automatically -- no other C++ changes needed.
 
 **Template parameter reference by family:**
 
@@ -107,11 +107,11 @@ const TYPE_REGISTRY = [
 
 Tuple layout: `(TypeSymbol, P1, P2, CPrefix, StorageT)`
 
-- `TypeSymbol` — `:Posit`, `:CFloat`, `:LNS`, `:HFloat`, `:DFloat`, `:Fixed`
-- `P1` — first user-visible parameter (N for Posit/CFloat/LNS/Fixed, ndigits for HFloat/DFloat)
-- `P2` — second user-visible parameter (ES, R, rbits, etc.)
-- `CPrefix` — the C symbol name from Step 2 (e.g. `"cfloat32_7"`)
-- `StorageT` — Julia unsigned type matching IT from Step 1
+- `TypeSymbol` -- `:Posit`, `:CFloat`, `:LNS`, `:HFloat`, `:DFloat`, `:Fixed`
+- `P1` -- first user-visible parameter (N for Posit/CFloat/LNS/Fixed, ndigits for HFloat/DFloat)
+- `P2` -- second user-visible parameter (ES, R, rbits, etc.)
+- `CPrefix` -- the C symbol name from Step 2 (e.g. `"cfloat32_7"`)
+- `StorageT` -- Julia unsigned type matching IT from Step 1
 
 **For `Takum`**, add to `TAKUM_REGISTRY` instead:
 
@@ -125,7 +125,7 @@ const TAKUM_REGISTRY = [
 
 Tuple layout: `(N, CPrefix, StorageT)`.
 
-**For `DD`** (double-double), do not use either registry — see the special-case note below.
+**For `DD`** (double-double), do not use either registry -- see the special-case note below.
 
 ### Step 4: rebuild and verify
 
@@ -144,7 +144,7 @@ julia --project=. -e '
     printbits(x)
 '
 
-# Full test suite — must still pass
+# Full test suite -- must still pass
 julia --project=. test/runtests.jl
 ```
 
@@ -181,7 +181,7 @@ side and Julia's `UInt128` as StorageT:
 X(dd, __uint128_t, sw::universal::dd)
 ```
 
-`dd.hpp` already includes its own `manipulators.hpp` — do not add a separate
+`dd.hpp` already includes its own `manipulators.hpp` -- do not add a separate
 `#include <universal/number/dd/manipulators.hpp>` in the wrapper (ODR error).
 
 On the Julia side, `DD` is declared as a plain struct (no type parameters) and all its
@@ -215,9 +215,9 @@ julia --project=. test/runtests.jl
 
 Two files in `deps/` intentionally diverge from upstream and should be preserved
 when re-vendoring `takum/`:
-- `takum/math/functions/classify.hpp` — adds `#include <cmath>` and predicate-based
+- `takum/math/functions/classify.hpp` -- adds `#include <cmath>` and predicate-based
   `fpclassify` (upstream uses a `long double` cast)
-- `takum/math/functions/minmax.hpp` — NaR symmetry guards in `min`/`max`
+- `takum/math/functions/minmax.hpp` -- NaR symmetry guards in `min`/`max`
 
 ## Building the JLL (Phase 2)
 
