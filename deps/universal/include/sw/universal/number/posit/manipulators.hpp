@@ -1,0 +1,196 @@
+#pragma once
+// manipulators.hpp: definitions of helper functions for posit type manipulation
+//
+// Copyright (C) 2017 Stillwater Supercomputing, Inc.
+// SPDX-License-Identifier: MIT
+//
+// This file is part of the universal numbers project, which is released under an MIT Open Source license.
+
+#include <iostream>
+#include <iomanip>
+#include <cmath>  // for frexp/frexpf
+#include <typeinfo>  // for typeid()
+
+// pull in the color printing for shells utility
+#include <universal/utility/color_print.hpp>
+
+// This file contains functions that manipulate a posit type
+// using posit number system knowledge.
+
+namespace sw { namespace universal {
+
+	// Generate a type tag for this posit, for example, posit<8,1>
+	template<unsigned nbits, unsigned es, typename bt>
+	std::string type_tag(const posit<nbits, es, bt> & = {}) {
+		std::stringstream str;
+		str << "posit<"
+			<< std::setw(3) << nbits << ", "
+			<< std::setw(1) << es << ", "
+			<< type_tag(bt{}) << '>';
+		return str.str();
+	}
+
+	// report the dynamic range of a posit
+	template<unsigned nbits, unsigned es, typename bt = std::uint8_t>
+	std::string posit_range() {
+		std::stringstream str;
+		str << " posit<" << std::setw(3) << nbits << "," << es << "> ";
+		str << "useed scale  " << std::setw(4) << useed_scale<es>() << "     ";
+		str << "minpos scale " << std::setw(10) << minpos_scale<nbits, es>() << "     ";
+		str << "maxpos scale " << std::setw(10) << maxpos_scale<nbits, es>() << "     ";
+		str << "minimum " << std::setw(12) << std::numeric_limits<sw::universal::posit<nbits, es, bt>>::min() << "     ";
+		str << "maximum " << std::setw(12) << std::numeric_limits<sw::universal::posit<nbits, es, bt>>::max() ;
+		return str.str();
+	}
+
+	// generate a posit format ASCII format nbits.esxNN...NNp
+	template<unsigned nbits, unsigned es, typename bt>
+	inline std::string hex_print(const posit<nbits, es, bt>& p) {
+		// we need to transform the posit into a string
+		std::stringstream str;
+		str << nbits << '.' << es << 'x' << to_hex(p.bits()) << 'p';
+		return str.str();
+	}
+
+
+	// Generate a string representing the posit components: sign, regime, exponent, significand
+	template<unsigned nbits, unsigned es, typename bt>
+	std::string components(const posit<nbits, es, bt>& p) {
+		constexpr unsigned fbits = (es + 2 >= nbits ? 0 : nbits - 3 - es);
+		std::stringstream str;
+		bool		     		     _sign{false};
+		positRegime<nbits, es, bt>   _regime;
+		positExponent<nbits, es, bt> _exponent;
+		positFraction<fbits, bt>     _fraction;
+		decode(p.bits(), _sign, _regime, _exponent, _fraction);
+
+		str << "sign: " << (_sign ? '-' : '+')
+			<< ", regime: " << _regime.positRegime_k()
+			<< ", exponent: " << exponent_value(p)
+			<< ", significand: " << std::setprecision(21) << (1.0 + _fraction.value());
+
+		return str.str();
+	}
+
+	template<unsigned nbits, unsigned es, typename bt>
+	std::string pretty_print(const posit<nbits, es, bt>& p, int printPrecision = std::numeric_limits<double>::max_digits10) {
+		constexpr unsigned fbits = (es + 2 >= nbits ? 0 : nbits - 3 - es);
+		std::stringstream str;
+		bool		     		     _sign;
+		positRegime<nbits, es, bt>   _regime;
+		positExponent<nbits, es, bt> _exponent;
+		positFraction<fbits, bt>     _fraction;
+		decode(p.bits(), _sign, _regime, _exponent, _fraction);
+		str << ( _sign ? "s1 r" : "s0 r" );
+		blockbinary<nbits - 1, bt, BinaryNumberType::Unsigned> r = _regime.bits();
+		int regimeBits = (int)_regime.nrBits();
+		int nrOfRegimeBitsProcessed = 0;
+		for (int i = nbits - 2; i >= 0; --i) {
+			if (regimeBits > nrOfRegimeBitsProcessed++) {
+				str << (r.test(static_cast<unsigned>(i)) ? "1" : "0");
+			}
+		}
+		str << " e";
+		std::uint32_t expBits = _exponent.bits();
+		int exponentBits = (int)_exponent.nrBits();
+		int nrOfExponentBitsProcessed = 0;
+		for (int i = int(es) - 1; i >= 0; --i) {
+			if (exponentBits > nrOfExponentBitsProcessed++) {
+				str << ((expBits >> i) & 1 ? "1" : "0");
+			}
+		}
+		str << " f";
+		if constexpr (fbits > 0) {
+			blockbinary<fbits, bt, BinaryNumberType::Unsigned> f = _fraction.bits();
+			int fractionBits = (int)_fraction.nrBits();
+			int nrOfFractionBitsProcessed = 0;
+			for (int i = int(fbits) - 1; i >= 0; --i) {
+				if (fractionBits > nrOfFractionBitsProcessed++) {
+					str << (f.test(static_cast<unsigned>(i)) ? "1" : "0");
+				}
+			}
+		}
+		str << " q";
+		str << quadrant(p) << " v"
+			<< std::setprecision(printPrecision) << p
+			<< std::setprecision(0);
+		return str.str();
+	}
+
+	template<unsigned nbits, unsigned es, typename bt>
+	std::string info_print(const posit<nbits, es, bt>& p, int printPrecision = 17) {
+		constexpr unsigned fbits = (es + 2 >= nbits ? 0 : nbits - 3 - es);
+		std::stringstream str;
+		bool		     		     _sign;
+		positRegime<nbits, es, bt>   _regime;
+		positExponent<nbits, es, bt> _exponent;
+		positFraction<fbits, bt>     _fraction;
+		decode(p.bits(), _sign, _regime, _exponent, _fraction);
+
+		str << "raw: " << p.bits() << " "
+			<< quadrant(p) << " "
+			<< (_sign ? "s1 r" : "s0 r")
+			<< _regime << " e"
+			<< _exponent << " f"
+			<< _fraction << " : value "
+			<< std::setprecision(printPrecision) << p
+			<< std::setprecision(0);
+		return str.str();
+	}
+
+	template<unsigned nbits, unsigned es, typename bt>
+	std::string color_print(const posit<nbits, es, bt>& p) {
+		constexpr unsigned fbits = (es + 2 >= nbits ? 0 : nbits - 3 - es);
+		std::stringstream str;
+		bool		     		_sign;
+		positRegime<nbits, es, bt>   _regime;
+		positExponent<nbits, es, bt> _exponent;
+		positFraction<fbits, bt>     _fraction;
+		decode(p.bits(), _sign, _regime, _exponent, _fraction);
+
+		Color red(ColorCode::FG_RED);
+		Color yellow(ColorCode::FG_YELLOW);
+		Color cyan(ColorCode::FG_CYAN);
+		Color magenta(ColorCode::FG_MAGENTA);
+		Color def(ColorCode::FG_DEFAULT);
+
+		// sign bit
+		str << red << (_sign ? '1' : '0');
+
+		// regime bits: read decoded field bits directly (no inversion)
+		blockbinary<nbits - 1, bt, BinaryNumberType::Unsigned> r = _regime.bits();
+		int regimeBits = (int)_regime.nrBits();
+		int nrOfRegimeBitsProcessed = 0;
+		for (unsigned i = 0; i < nbits - 1; ++i) {
+			unsigned bitIndex = nbits - 2ull - i;
+			if (regimeBits > nrOfRegimeBitsProcessed++) {
+				str << yellow << (r.test(bitIndex) ? '1' : '0');
+			}
+		}
+
+		// exponent bits: read decoded field bits directly (no inversion)
+		blockbinary<es, bt, BinaryNumberType::Unsigned> e = _exponent.bits();
+		int exponentBits = (int)_exponent.nrBits();
+		int nrOfExponentBitsProcessed = 0;
+		for (int i = es - 1; i >= 0; --i) {
+			if (exponentBits > nrOfExponentBitsProcessed++) {
+				str << cyan << (e.test(static_cast<unsigned>(i)) ? '1' : '0');
+			}
+		}
+
+		// fraction bits: read decoded field bits directly
+		blockbinary<posit<nbits, es>::fbits, bt, BinaryNumberType::Unsigned> f = _fraction.bits();
+		int fractionBits = (int)_fraction.nrBits();
+		int nrOfFractionBitsProcessed = 0;
+		for (int i = int(p.fbits) - 1; i >= 0; --i) {
+			if (fractionBits > nrOfFractionBitsProcessed++) {
+				str << magenta << (f.test(static_cast<unsigned>(i)) ? '1' : '0');
+			}
+		}
+
+		str << def;
+		return str.str();
+	}
+
+
+}} // namespace sw::universal

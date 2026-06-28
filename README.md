@@ -168,6 +168,26 @@ are verified by the test suite.
 | `Posit{64,2}` | 16 | 16^62 ≈ 4.52e74 | 16^−62 ≈ 2.21e-75 | 1.0 |
 | `Posit{64,3}` | 256 | 256^62 ≈ 2.05e149 | 256^−62 ≈ 4.90e-150 | 1.0 |
 
+## Known limitations and semantics
+
+A few types behave in ways worth knowing before you rely on them:
+
+- **`HFloat` and `DFloat` parameters count digits, not total bits.** `HFloat{N,ES}` has
+  `N` = hex-fraction digits and `ES` = exponent bits, so `HFloat{6,7}` is a **32-bit** type
+  (1 + 7 + 6×4 = 32). Likewise `DFloat{N,ES}` uses `N` = significand digits. This differs from
+  `Posit`/`CFloat`/`LNS`, where the first parameter is the total bit width.
+- **`HFloat`, `DFloat`, and `Fixed` have no NaN or Inf.** None reserve encodings for them, so
+  `isnan(x)` and `isinf(x)` always return `false`, and there is no overflow sentinel.
+- **`Fixed` is modular.** Arithmetic that exceeds the range wraps around (2's-complement
+  modular) rather than saturating or producing Inf. `sqrt` of a negative and `log` of a
+  non-positive `Fixed` value return `0` rather than raising an error.
+- **`Takum` NaR is unordered.** Unlike posit NaR (which sorts below every real), `NaR < x` is
+  `false` for all `x` under the takum standard, so comparisons against takum NaR follow
+  IEEE-NaN-like ordering. See the NaR section above for posit behavior.
+- **`DD` (double-double) steps are tiny.** `nextfloat(DD(1.0))` increments by ~2⁻¹⁰⁶, which is
+  below `Float64` print precision, so it *displays* as `DD(1.0)` even though the stored value
+  did change.
+
 ## Linear algebra
 
 All types compose with Julia's `LinearAlgebra` — computations run entirely in the chosen
@@ -193,6 +213,34 @@ numerical kernels — e.g. compare a `Posit{16,1}` matrix factorization against
 **Note on LNS:** logarithmic numbers quantize in the log domain, so products and quotients
 are exact while values like `1.5` are stored as the nearest representable power-of-two
 fraction. This is inherent to the number system.
+
+### Quire support — exact fused dot product
+
+Posits carry an associated **quire**, a wide fixed-point accumulator that sums products
+with no intermediate rounding. `fdp` uses it to compute an **exact fused dot product** —
+every term is accumulated exactly and the result is rounded only once, at the end:
+
+```julia
+a = rand(Posit{32,2}, 1000)
+b = rand(Posit{32,2}, 1000)
+
+sum(a .* b)    # ordinary dot product: rounds after every * and +
+fdp(a, b)      # quire: exact accumulation, one final rounding
+```
+
+For hand-rolled accumulation, build a `Quire` directly:
+
+```julia
+q = Quire(Posit{32,2})
+for i in eachindex(a, b)
+    fma_product!(q, a[i], b[i])   # q += a[i]*b[i], exactly
+end
+Posit{32,2}(q)                     # round once
+```
+
+The quire is **opt-in and posit-only** — ordinary posit arithmetic and dot products are
+unchanged, so rounded and fused results can be compared in the same program. See
+[`examples/quire.jl`](examples/quire.jl) for a worked accuracy comparison.
 
 ## Bit-level inspection
 
@@ -223,6 +271,7 @@ Field coloring by family:
 ```
 src/UniversalNumbers.jl        Julia module (parametric types, ccall dispatch)
 src/libuniversal_wrapper.cpp   C ABI bridge (compiled into UniversalNumbers_jll)
+src/quire.jl                   Exact fused dot product (quire) for posits
 test/runtests.jl               Test entry point
 test/posits.jl                 Posit arithmetic, LA, adjacent-value tests
 test/takums.jl                 Takum arithmetic tests
@@ -232,8 +281,35 @@ test/printbits.jl              Bit-inspection tests
 test/broadcasting.jl           Broadcasting and array tests
 examples/chebyshev.jl          Chebyshev nodes and approximation
 examples/lorenz.jl             Lorenz attractor visualization
+examples/quire.jl              Quire vs naive dot product accuracy comparison
 CONTRIBUTING.md                Adding types, building from source, JLL workflow
 ```
+
+## Contributing
+
+Contributions are welcome — bug reports, new type registrations, and build/CI
+improvements. See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full guide (adding a
+type, the JLL build, and design notes).
+
+**Building from source** is only needed for development — users get the pre-built bridge
+library automatically via `UniversalNumbers_jll`. Prerequisites:
+
+- Julia ≥ 1.10
+- CMake ≥ 3.22
+- A C++20 compiler (GCC 10+, Clang 12+, MSVC 2019+)
+
+```bash
+git clone https://github.com/jamesquinlan/UniversalNumbers.jl
+cd UniversalNumbers.jl
+cmake -S . -B build && cmake --build build   # builds build/libuniversal.so
+julia --project=. test/runtests.jl           # run the test suite
+```
+
+When running from source the module loads `build/libuniversal.so` directly; the installed
+package uses the JLL artifact instead. Registration with the Julia General registry and
+[Yggdrasil](https://github.com/JuliaPackaging/Yggdrasil) is handled by the maintainer —
+please open build-related pull requests against this repository rather than submitting to
+Yggdrasil directly.
 
 ## References and Citations (bibTeX)
 

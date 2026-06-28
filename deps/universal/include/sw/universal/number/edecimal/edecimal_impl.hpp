@@ -1,0 +1,885 @@
+#pragma once
+// edecimal_impl.hpp: definition of adaptive precision decimal integer data type
+//
+// Copyright (C) 2017 Stillwater Supercomputing, Inc.
+// SPDX-License-Identifier: MIT
+//
+// This file is part of the universal numbers project, which is released under an MIT Open Source license.
+
+// ALPHA feature: occurrence is NOT an official API for any of the Universal number systems
+#if !defined(EDECIMAL_OPERATIONS_COUNT)
+#define EDECIMAL_OPERATIONS_COUNT 0
+#endif
+#if EDECIMAL_OPERATIONS_COUNT
+#include <universal/utility/occurrence.hpp>
+#endif
+
+namespace sw { namespace universal {
+
+/// <summary>
+/// Adaptive precision decimal integer number type
+/// </summary>
+/// The digits are managed as a vector with the digit for 10^0 stored at index 0, 10^1 stored at index 1, etc.
+class edecimal : public std::vector<uint8_t> {
+#if EDECIMAL_OPERATIONS_COUNT
+	static bool enableAdd;
+	static occurrence<edecimal> ops;
+#endif
+public:
+	// Partial-constexpr surface (issue #746): edecimal inherits from
+	// std::vector<uint8_t>, so any non-empty vector escapes constant
+	// evaluation under C++20's transient-allocation rules.  The default
+	// ctor uses is_constant_evaluated() to keep two parallel invariants:
+	// at constant evaluation the vector is empty (canonical constexpr
+	// zero, recognized by iszero() via the size() == 0 branch); at
+	// runtime push_back(0) restores the historical "size() == 1, [0] == 0"
+	// representation that comparison and arithmetic operators rely on.
+	// Sign-only selectors/modifiers operate purely on the bool member and
+	// are constexpr-clean.  All digit-mutating paths (setzero, setdigit,
+	// arithmetic, conversion-out) remain non-constexpr until C++23.
+	constexpr edecimal() noexcept : std::vector<uint8_t>(), negative{ false } {
+		if (!std::is_constant_evaluated()) {
+			push_back(0);
+		}
+	}
+
+	constexpr edecimal(const edecimal&) = default;
+	constexpr edecimal(edecimal&&) = default;
+
+	constexpr edecimal& operator=(const edecimal&) = default;
+	constexpr edecimal& operator=(edecimal&&) = default;
+
+	// initializers for native types
+	edecimal(char initial_value)                { *this = initial_value; }
+	edecimal(short initial_value)               { *this = initial_value; }
+	edecimal(int initial_value)                 { *this = initial_value; }
+	edecimal(long initial_value)                { *this = initial_value; }
+	edecimal(long long initial_value)           { *this = initial_value; }
+	edecimal(unsigned char initial_value)       { *this = initial_value; }
+	edecimal(unsigned short initial_value)      { *this = initial_value; }
+	edecimal(unsigned int initial_value)        { *this = initial_value; }
+	edecimal(unsigned long initial_value)       { *this = initial_value; }
+	edecimal(unsigned long long initial_value)  { *this = initial_value; }
+	edecimal(float initial_value)               { *this = initial_value; }
+	edecimal(double initial_value)              { *this = initial_value; }
+
+
+	// assignment operators for native types
+	edecimal& operator=(const std::string& digits) {
+		parse(digits);
+		return *this;
+	}
+	edecimal& operator=(char rhs)               { return convert_integer(rhs);}
+	edecimal& operator=(short rhs)              { return convert_integer(rhs);}
+	edecimal& operator=(int rhs)                { return convert_integer(rhs);}
+	edecimal& operator=(long rhs)               { return convert_integer(rhs);}
+	edecimal& operator=(long long rhs)          { return convert_integer(rhs);}
+	edecimal& operator=(unsigned char rhs)      { return convert_integer(rhs);}
+	edecimal& operator=(unsigned short rhs)     { return convert_integer(rhs);}
+	edecimal& operator=(unsigned int rhs)       { return convert_integer(rhs);}
+	edecimal& operator=(unsigned long rhs)      { return convert_integer(rhs);}
+	edecimal& operator=(unsigned long long rhs) { return convert_integer(rhs);}
+	edecimal& operator=(float rhs)              { return convert_ieee754(rhs);}
+	edecimal& operator=(double rhs)             { return convert_ieee754(rhs);}
+
+#if LONG_DOUBLE_SUPPORT
+	edecimal(long double initial_value)         { *this = initial_value; }
+	edecimal& operator=(long double rhs)        { return convert_ieee754(rhs); }
+#endif
+
+	// arithmetic operators
+	edecimal& operator+=(const edecimal& rhs) {
+		edecimal _rhs(rhs);   // is this copy necessary? I introduced it to have a place to pad
+		if (negative != rhs.negative) {  // different signs
+			_rhs.setsign(!rhs.sign());
+			return operator-=(_rhs);
+		}
+		else {
+			// same sign implies this->negative is invariant
+		}
+		size_t l = size();
+		size_t r = _rhs.size();
+		// zero pad the shorter edecimal
+		if (l < r) {
+			insert(end(), r - l, 0);
+		}
+		else {
+			_rhs.insert(_rhs.end(), l - r, 0);
+		}
+		edecimal::iterator lit = begin();
+		edecimal::iterator rit = _rhs.begin();
+		uint8_t carry = 0;
+		for (; lit != end() || rit != _rhs.end(); ++lit, ++rit) {
+			*lit += *rit + carry;
+			if (*lit > 9) {
+				carry = 1;
+				*lit -= 10;
+			}
+			else {
+				carry = 0;
+			}
+		}
+		if (carry) push_back(1);
+#if EDECIMAL_OPERATIONS_COUNT
+		if (enableAdd) ++ops.add;
+#endif
+		return *this;
+	}
+	edecimal& operator-=(const edecimal& rhs) {
+		edecimal _rhs(rhs);   // is this copy necessary? I introduced it to have a place to pad
+		bool sign = this->sign();
+		if (negative != rhs.negative) {
+			_rhs.setsign(!rhs.sign());
+			return operator+=(_rhs);
+		}
+		// largest value must be subtracted from
+		size_t l = size();
+		size_t r = _rhs.size();
+		// zero pad the shorter edecimal
+		if (l < r) {
+			insert(end(), r - l, 0);
+			std::swap(*this, _rhs);
+			sign = !sign;
+		}
+		else if (r < l) {
+			_rhs.insert(_rhs.end(), l - r, 0);
+		}
+		else {
+			// the operands are the same size, thus we need to check their magnitude
+			this->setpos();
+			_rhs.setpos();
+			if (*this < _rhs) {
+				std::swap(*this, _rhs);
+				sign = !sign;
+			}
+		}
+		edecimal::iterator lit = begin();
+		edecimal::iterator rit = _rhs.begin();
+		uint8_t borrow = 0;
+		for (; lit != end() || rit != _rhs.end(); ++lit, ++rit) {
+			if (*rit > *lit - borrow) {
+				*lit = static_cast<uint8_t>(10 + *lit - borrow - *rit);
+				borrow = 1;
+			}
+			else {
+				*lit = static_cast<uint8_t>(*lit - borrow - *rit);
+				borrow = 0;
+			}
+		}
+		if (borrow) std::cout << "can this happen?" << std::endl;
+		unpad();
+		if (this->iszero()) { // special case of zero having positive sign
+			this->setpos();
+		}
+		else {
+			this->setsign(sign);
+		}
+#if EDECIMAL_OPERATIONS_COUNT
+		++ops.sub;
+#endif
+		return *this;
+	}
+	edecimal& operator*=(const edecimal& rhs) {
+		// special case
+		if (iszero() || rhs.iszero()) {
+			setzero();
+#if EDECIMAL_OPERATIONS_COUNT
+			++ops.mul;
+#endif
+			return *this;
+		}
+		bool signOfFinalResult = (negative != rhs.negative) ? true : false;
+		edecimal product;
+#if EDECIMAL_OPERATIONS_COUNT
+		enableAdd = false;
+#endif
+		// find the smallest edecimal to minimize the amount of work
+		size_t l = size();
+		size_t r = rhs.size();
+		edecimal::const_iterator sit, bit; // sit = smallest iterator, bit = biggest iterator
+		if (l < r) {
+			int64_t position = 0;
+			for (sit = begin(); sit != end(); ++sit) {
+				edecimal partial_sum; partial_sum.clear(); // TODO: this is silly, create and immediately destruct to make the insert work
+				partial_sum.insert(partial_sum.end(), r + position, 0);
+				edecimal::iterator pit = partial_sum.begin() + position;
+				uint8_t carry = 0;
+				for (bit = rhs.begin(); bit != rhs.end() && pit != partial_sum.end(); ++bit, ++pit) {
+					uint8_t digit = static_cast<uint8_t>(*sit * *bit + carry);
+					*pit = static_cast<uint8_t>(digit % 10);
+					carry = static_cast<uint8_t>(digit / 10);
+				}
+				if (carry) partial_sum.push_back(carry);
+				product += partial_sum;
+				//				std::cout << "partial sum " << partial_sum << " intermediate product " << product << std::endl;
+				++position;
+			}
+		}
+		else {
+			int64_t position = 0;
+			for (sit = rhs.begin(); sit != rhs.end(); ++sit) {
+				edecimal partial_sum; partial_sum.clear(); // TODO: this is silly, create and immediately destruct to make the insert work
+				partial_sum.insert(partial_sum.end(), l + position, 0);
+				edecimal::iterator pit = partial_sum.begin() + position;
+				uint8_t carry = 0;
+				for (bit = begin(); bit != end() && pit != partial_sum.end(); ++bit, ++pit) {
+					uint8_t digit = static_cast<uint8_t>(*sit * *bit + carry);
+					*pit = static_cast<uint8_t>(digit % 10);
+					carry = static_cast<uint8_t>(digit / 10);
+				}
+				if (carry) partial_sum.push_back(carry);
+				product += partial_sum;
+				//				std::cout << "partial sum " << partial_sum << " intermediate product " << product << std::endl;
+				++position;
+			}
+		}
+		product.unpad();
+		*this = product;
+		setsign(signOfFinalResult);
+#if EDECIMAL_OPERATIONS_COUNT
+		enableAdd = true;
+		++ops.mul;
+#endif
+		return *this;
+	}
+	edecimal& operator/=(const edecimal& rhs) {
+		*this = quotient(*this, rhs);
+#if EDECIMAL_OPERATIONS_COUNT
+		++ops.div;
+#endif
+		return *this;
+	}
+	edecimal& operator%=(const edecimal& rhs) {
+		*this = remainder(*this, rhs);
+#if EDECIMAL_OPERATIONS_COUNT
+		++ops.rem;
+#endif
+		return *this;
+	}
+	edecimal& operator<<=(int shift) {
+		if (shift == 0) return *this;
+		if (shift < 0) {
+			return operator>>=(-shift);
+		}
+		for (int i = 0; i < shift; ++i) {
+			this->insert(this->begin(), 0);
+		}
+		return *this;
+	}
+	edecimal& operator>>=(int shift) {
+		if (shift == 0) return *this;
+		if (shift < 0) {
+			return operator<<=(-shift);
+		}
+		if (signed(size()) <= shift) {
+			this->setzero();
+		}
+		else {
+			for (int i = 0; i < shift; ++i) {
+				this->erase(this->begin());
+			}
+		}
+		return *this;
+	}
+
+	// unitary operators
+	edecimal operator-() const {
+		edecimal tmp(*this);
+		tmp.setsign(!tmp.sign());
+		return tmp;
+	}
+	edecimal operator++(int) { // postfix
+		edecimal tmp(*this);
+		edecimal one;
+		one.setdigit(1);
+		*this += one;
+		return tmp;
+	}
+	edecimal& operator++() { // prefix
+		edecimal one;
+		one.setdigit(1);
+		*this += one;
+		return *this;
+	}
+	edecimal operator--(int) { // postfix
+		edecimal tmp(*this);
+		edecimal one;
+		one.setdigit(1);
+		*this -= one;
+		return tmp;
+	}
+	edecimal& operator--() { // prefix
+		edecimal one;
+		one.setdigit(1);
+		*this -= one;
+		return *this;
+	}
+
+	// conversion operators: Maybe remove explicit, MTL compiles, but we have lots of double computation then
+	explicit operator unsigned short()     const noexcept { return to_ushort(); }
+	explicit operator unsigned int()       const noexcept { return to_uint(); }
+	explicit operator unsigned long()      const noexcept { return to_ulong(); }
+	explicit operator unsigned long long() const noexcept { return to_ulong_long(); }
+	explicit operator short()              const noexcept { return to_short(); }
+	explicit operator int()                const noexcept { return to_int(); }
+	explicit operator long()               const noexcept { return to_long(); }
+	explicit operator long long()          const noexcept { return to_long_long(); }
+	explicit operator float()              const noexcept { return to_float(); }
+	explicit operator double()             const noexcept { return to_double(); }
+	explicit operator long double()        const noexcept { return to_long_double(); }
+
+	// selectors
+	// iszero() is constexpr-callable on the default-constructed (empty) state;
+	// once any digit-mutating op runs, the vector heap-escapes and constexpr
+	// usage is no longer permitted on the resulting object (C++20).
+	constexpr bool iszero() const noexcept {
+		if (size() == 0) return true;
+		for (auto d : *this) {
+			if (d != 0) return false;
+		}
+		return true;
+	}
+	constexpr bool sign() const noexcept { return negative; }
+	constexpr bool isneg() const noexcept { return negative; }   // <  0
+	constexpr bool ispos() const noexcept { return !negative; }  // >= 0
+
+	// modifiers
+	inline void setzero() { clear(); push_back(0); negative = false; }
+	constexpr void setsign(bool sign) noexcept { negative = sign; }
+	constexpr void setneg() noexcept { negative = true; }
+	constexpr void setpos() noexcept { negative = false; }
+	inline void setdigit(uint8_t d, bool sign = false) {
+		assert(d <= 9); // test argument assumption
+		clear();
+		push_back(d);
+		negative = sign;
+	}
+	inline void setbits(uint64_t v) { *this = v; } // API to be consistent with the other number systems
+
+	// remove any leading zeros from a edecimal representation
+	void unpad() {
+		int n = (int)size();
+		for (int i = n - 1; i > 0; --i) {
+			if (operator[](static_cast<size_t>(i)) == 0) {
+				pop_back();
+			}
+			else {
+				return;  // found the most significant digit
+			}
+		}
+	}
+
+	// read an ASCII decimal literal and make an edecimal value out of it.
+	// Accepts integer, decimal-point, and scientific-notation forms:
+	//   "42"          -> 42
+	//   "-1000"       -> -1000
+	//   "3.14e2"      -> 314
+	//   "1.5e10"      -> 15'000'000'000
+	//   "-3.14e+200"  -> -314 * 10^198
+	// Rejects forms whose effective exponent is negative -- those carry
+	// fractional digits that cannot be represented exactly as an integer.
+	//   "3.14"        -> rejected (would lose the .14)
+	//   "1.5e-100"    -> rejected
+	bool parse(const std::string& _digits) {
+		// Defensive cap on the resulting digit count.  scan_decimal_float
+		// returns an int32 exponent, so an input like "1e2000000000" would
+		// otherwise expand to two billion zeros (~2 GB of vector storage)
+		// inside a parse call.  This bound caps the post-expansion size at
+		// ~1 MiB of digit storage and keeps parse a cheap operation.  The
+		// limit is far above any practical decimal literal a user would
+		// type by hand or generate from a roundtrip.
+		constexpr std::size_t MAX_DIGITS = 1u << 20;  // 1,048,576
+
+		std::string digits(_digits);
+		trim(digits);
+		if (digits.empty()) return false;
+
+		auto scan = sw::universal::string_parse::scan_decimal_float(digits);
+		if (!scan.valid) return false;
+
+		// Combined significand digits are the integer part followed by the
+		// fractional part; the decimal point's position shifts the exponent.
+		std::int64_t eff_exp = static_cast<std::int64_t>(scan.exp10)
+		                     - static_cast<std::int64_t>(scan.frac_part.size());
+		if (eff_exp < 0) return false;
+
+		// Total digit count after expansion = int + frac + eff_exp trailing
+		// zeros.  Reject if this would exceed the cap.  Use uint64 math so
+		// the sum cannot overflow when eff_exp approaches INT32_MAX.
+		std::uint64_t total_digits = static_cast<std::uint64_t>(scan.int_part.size())
+		                           + static_cast<std::uint64_t>(scan.frac_part.size())
+		                           + static_cast<std::uint64_t>(eff_exp);
+		if (total_digits > MAX_DIGITS) return false;
+
+		clear();
+		reserve(static_cast<std::size_t>(total_digits));
+		// Push significand digits in high-to-low order (matches the
+		// pre-existing pattern), then reverse so _digits[0] holds 10^0.
+		for (char c : scan.int_part)  push_back(static_cast<std::uint8_t>(c - '0'));
+		for (char c : scan.frac_part) push_back(static_cast<std::uint8_t>(c - '0'));
+		// Trailing zeros from the exponent: "1.5e10" with eff_exp = 9
+		// becomes "15" + 9 zeros = "15000000000".
+		insert(end(), static_cast<std::size_t>(eff_exp), std::uint8_t{0});
+
+		// Empty significand (defensive; scan_decimal_float requires at least
+		// one digit somewhere, so this shouldn't fire on valid output).
+		if (empty()) push_back(0);
+
+		std::reverse(begin(), end());
+		// Strip high-order zeros so "0042" / "0.0042e4" stay normalized,
+		// and any all-zero representation collapses to a single [0].
+		unpad();
+		setsign(scan.negative);
+		// No negative zero: "-0", "-0.0e5", etc. all parse to +0.
+		if (size() == 1 && operator[](0) == 0) setpos();
+		return true;
+	}
+
+#if EDECIMAL_OPERATIONS_COUNT
+	// reset the operation statistics
+	void resetStats() {
+		ops.reset();
+	}
+	void printStats(std::ostream& ostr) {
+		ops.report(ostr);
+	}
+#endif
+
+protected:
+	// HELPER methods
+
+	// conversion functions
+	inline short              to_short()       const noexcept { return short(to_long_long()); }
+	inline int                to_int()         const noexcept { return short(to_long_long()); }
+	inline long               to_long()        const noexcept { return short(to_long_long()); }
+	inline long long          to_long_long()   const noexcept {
+		// Horner's method: accumulate from most-significant digit
+		long long v = 0;
+		for (edecimal::const_reverse_iterator rit = this->rbegin(); rit != this->rend(); ++rit) {
+			v = v * 10 + *rit;
+		}
+		return sign() ? -v : v;
+	}
+	inline unsigned short     to_ushort()      const noexcept { return static_cast<unsigned short>(to_ulong_long()); }
+	inline unsigned int       to_uint()        const noexcept { return static_cast<unsigned int>(to_ulong_long()); }
+	inline unsigned long      to_ulong()       const noexcept { return static_cast<unsigned long>(to_ulong_long()); }
+	inline unsigned long long to_ulong_long()  const noexcept { return static_cast<unsigned long long>(to_long_long()); }
+	inline float              to_float()       const noexcept {
+		return static_cast<float>(to_double());
+	}
+	inline double             to_double()      const noexcept {
+		// Accumulate via long double Horner's method to minimize
+		// floating-point rounding error for large integers (fixes issue #205)
+		return static_cast<double>(to_long_double());
+	}
+	inline long double        to_long_double() const noexcept {
+		// Horner's method: accumulate from most-significant digit
+		long double ld = 0.0l;
+		for (edecimal::const_reverse_iterator rit = this->rbegin(); rit != this->rend(); ++rit) {
+			ld = ld * 10.0l + *rit;
+		}
+		return sign() ? -ld : ld;
+	}
+
+	// Convert integer types to a edecimal representation
+// TODO: needs SFINAE enable_if to constrain it to native integer types
+	template<typename Ty>
+	edecimal& convert_integer(Ty v) {
+		using namespace std;
+		//cout << numeric_limits<Ty>::digits << " max value " << numeric_limits<Ty>::max() << endl;
+		bool sign = false;
+		setzero(); // initialize the edecimal value to 0
+		if (v == 0) return *this;
+		if (numeric_limits<Ty>::is_signed) {
+			if (v < 0) {
+				sign = true; // negative number
+				// transform to sign-magnitude on positive side
+				v *= Ty(-1);
+			}
+		}
+		uint64_t mask = 0x1;
+		// IMPORTANT: can't use initializer or assignment operator as it would yield 
+		// an infinite loop calling convert_integer. So we need to construct the
+		// edecimal from first principals
+		edecimal base; // can't use base(1) semantics here as it would cause an infinite loop
+		base.clear();
+		base.push_back(1);
+		while (v) { // minimum loop iterations; exits when no bits left
+			if (v & mask) {
+				*this += base;
+			}
+			base += base;
+			v >>= 1;
+		}
+		// lastly, set the sign
+		setsign(sign);
+		return *this;
+	}
+	template<typename Ty>
+	edecimal& convert_ieee754(Ty rhs) {
+		clear();
+		if (rhs <= 0.5 && rhs >= -0.5) {
+			return *this = 0;
+		}
+		else {
+			if (rhs < -0.5) negative = true; else negative = false;
+
+			bool s{ false };
+			uint64_t unbiasedExponent{ 0 };
+			uint64_t fraction{ 0 };
+			uint64_t bits{ 0 };
+			extractFields(rhs, s, unbiasedExponent, fraction, bits);
+			// TODO: subnormals
+
+			fraction |= (1ull << ieee754_parameter<Ty>::fbits); // add in the hidden bit
+			// scale up by fbits, convert, and then scale back
+			uint64_t mask = 0x1;
+			edecimal base; // can't use base(1) semantics here as it would cause an infinite loop
+			base[0] = 1;
+//			int i = 0;
+			while (fraction) { // minimum loop iterations; exits when no bits left
+//				std::cout << std::setw(3) << i++ << "  base : " << base << '\n';
+				if (fraction & mask) {
+					*this += base;
+				}
+				base += base;
+				fraction >>= 1;
+			}
+//			std::cout << "upconversion : " << *this << " : final bit value: " << base << '\n';
+			int scale = static_cast<int>(unbiasedExponent) - ieee754_parameter<Ty>::bias; // original scale of the number
+			int upScale = ieee754_parameter<Ty>::fbits;
+			int correction = upScale - scale;
+//			std::cout << "correction = " << correction << " scale = " << scale << " upscale = " << upScale << '\n';
+			if (correction >= 0) {
+				edecimal downConvert;
+				downConvert[0] = 1;
+				for (int i = 0; i < correction; ++i) downConvert += downConvert;
+//				std::cout << "downConvert : " << downConvert << '\n';
+				// divide the factor out
+				*this /= downConvert;
+			}
+			else {
+				edecimal upConvert;
+				upConvert[0] = 1;
+				for (int i = 0; i < -correction; ++i) upConvert += upConvert;
+//				std::cout << "upConvert : " << upConvert << '\n';
+				// multiply to add the missing factor
+				*this *= upConvert;
+			}
+		}
+		return *this;
+	}
+
+private:
+	// sign-magnitude number: indicate if number is positive or negative
+	bool negative;
+
+	friend std::ostream& operator<<(std::ostream& ostr, const edecimal& d);
+	friend std::istream& operator>>(std::istream& istr, edecimal& d);
+
+	// edecimal - edecimal logic operators
+	friend bool operator==(const edecimal& lhs, const edecimal& rhs);
+	friend bool operator!=(const edecimal& lhs, const edecimal& rhs);
+	friend bool operator<(const edecimal& lhs, const edecimal& rhs);
+	friend bool operator>(const edecimal& lhs, const edecimal& rhs);
+	friend bool operator<=(const edecimal& lhs, const edecimal& rhs);
+	friend bool operator>=(const edecimal& lhs, const edecimal& rhs);
+};
+
+////////////////// helper functions
+
+// find the order of the most significant digit, precondition edecimal is unpadded
+inline int findMsd(const edecimal& v) {
+	int msd = int(v.size()) - 1;
+	if (msd == 0 && v == 0) return -1; // no significant digit found, all digits are zero
+	assert(v.at(static_cast<size_t>(msd)) != 0); // indicates the edecimal wasn't unpadded
+	return msd;
+}
+
+
+////////////////// DECIMAL operators
+
+/// stream operators
+
+inline std::string to_binary(const edecimal& d) {
+	std::stringstream s;
+	if (d.isneg()) s << '-';
+	for (edecimal::const_reverse_iterator rit = d.rbegin(); rit != d.rend(); ++rit) {
+		s << (int)*rit;
+	}
+	return s.str();
+}
+
+// generate an ASCII edecimal string
+inline std::string to_string(const edecimal& d) {
+	std::stringstream s;
+	if (d.isneg()) s << '-';
+	for (edecimal::const_reverse_iterator rit = d.rbegin(); rit != d.rend(); ++rit) {
+		s << (int)*rit;
+	}
+	return s.str();
+}
+
+// generate an ASCII edecimal format and send to ostream
+inline std::ostream& operator<<(std::ostream& ostr, const edecimal& d) {
+	// to make certain that setw and left/right operators work properly
+	// we need to transform the integer into a string
+	std::stringstream ss;
+
+	//std::streamsize width = ostr.width();
+	std::ios_base::fmtflags ff;
+	ff = ostr.flags();
+	ss.flags(ff);
+	if (d.isneg()) ss << '-';
+	for (edecimal::const_reverse_iterator rit = d.rbegin(); rit != d.rend(); ++rit) {
+		ss << (int)*rit;
+	}
+	return ostr << ss.str();
+}
+
+// read an ASCII edecimal format from an istream
+inline std::istream& operator>>(std::istream& istr, edecimal& p) {
+	std::string txt;
+	if (!(istr >> txt)) {
+		// extraction failed (already-bad stream or EOF); failbit set by >>.
+		return istr;
+	}
+	if (!p.parse(txt)) {
+		std::cerr << "unable to parse -" << txt << "- into an edecimal value\n";
+		istr.setstate(std::ios::failbit);
+	}
+	return istr;
+}
+
+/// edecimal binary arithmetic operators
+
+// binary addition of edecimal numbers
+inline edecimal operator+(const edecimal& lhs, const edecimal& rhs) {
+	edecimal sum = lhs;
+	sum += rhs;
+	return sum;
+}
+// binary subtraction of edecimal numbers
+inline edecimal operator-(const edecimal& lhs, const edecimal& rhs) {
+	edecimal diff = lhs;
+	diff -= rhs;
+	return diff;
+}
+// binary mulitplication of edecimal numbers
+inline edecimal operator*(const edecimal& lhs, const edecimal& rhs) {
+	edecimal mul = lhs;
+	mul *= rhs;
+	return mul;
+}
+// binary division of edecimal numbers
+inline edecimal operator/(const edecimal& lhs, const edecimal& rhs) {
+	edecimal ratio = lhs;
+	ratio /= rhs;
+	return ratio;
+}
+// binary remainder of edecimal numbers
+inline edecimal operator%(const edecimal& lhs, const edecimal& rhs) {
+	edecimal remainder = lhs;
+	remainder %= rhs;
+	return remainder;
+}
+// binary left shift
+inline edecimal operator<<(const edecimal& lhs, int shift) {
+	edecimal d(lhs);
+	return d <<= shift;
+}
+// binary right shift
+inline edecimal operator>>(const edecimal& lhs, int shift) {
+	edecimal d(lhs);
+	return d >>= shift;
+}
+/// logic operators
+
+	// edecimal - edecimal logic operators
+// equality test
+bool operator==(const edecimal& lhs, const edecimal& rhs) {
+	if (lhs.size() != rhs.size()) return false;
+	bool areEqual = std::equal(lhs.begin(), lhs.end(), rhs.begin()) && lhs.sign() == rhs.sign();
+	return areEqual;
+}
+// inequality test
+bool operator!=(const edecimal& lhs, const edecimal& rhs) {
+	return !operator==(lhs, rhs);
+}
+// less-than test
+bool operator<(const edecimal& lhs, const edecimal& rhs) {
+	if (lhs.sign() != rhs.sign()) {
+		return lhs.sign() ? true : false;
+	}
+
+	// signs are the same
+	// this logic assumes that there is no padding in the operands
+	size_t l = lhs.size();
+	size_t r = rhs.size();
+	if (l < r) return lhs.sign() ? false : true;
+	if (l > r) return lhs.sign() ? true : false;
+	// numbers are the same size, need to compare magnitude
+	edecimal::const_reverse_iterator ritl = lhs.rbegin();
+	edecimal::const_reverse_iterator ritr = rhs.rbegin();
+	for (; ritl != lhs.rend() || ritr != rhs.rend(); ++ritl, ++ritr) {
+		if (*ritl < *ritr) return lhs.sign() ? false : true;
+		if (*ritl > *ritr) return lhs.sign() ? true : false;
+		// if the digits are equal we need to check the next set
+	}
+	// at this point we know the two operands are the same
+	return false;
+}
+// greater-than test
+bool operator>(const edecimal& lhs, const edecimal& rhs) {
+	return operator<(rhs, lhs);
+}
+// less-or-equal test
+bool operator<=(const edecimal& lhs, const edecimal& rhs) {
+	return operator<(lhs, rhs) || operator==(lhs, rhs);
+}
+// greater-or-equal test
+bool operator>=(const edecimal& lhs, const edecimal& rhs) {
+	return !operator<(lhs, rhs);
+}
+
+// edecimal - long logic operators
+inline bool operator==(const edecimal& lhs, long rhs) {
+	return lhs == edecimal(rhs);
+}
+inline bool operator!=(const edecimal& lhs, long rhs) {
+	return !operator==(lhs, edecimal(rhs));
+}
+inline bool operator< (const edecimal& lhs, long rhs) {
+	return operator<(lhs, edecimal(rhs));
+}
+inline bool operator> (const edecimal& lhs, long rhs) {
+	return operator< (edecimal(rhs), lhs);
+}
+inline bool operator<=(const edecimal& lhs, long rhs) {
+	return operator< (lhs, edecimal(rhs)) || operator==(lhs, edecimal(rhs));
+}
+inline bool operator>=(const edecimal& lhs, long rhs) {
+	return !operator<(lhs, edecimal(rhs));
+}
+
+// long - edecimal logic operators
+inline bool operator==(long lhs, const edecimal& rhs) {
+	return edecimal(lhs) == rhs;
+}
+inline bool operator!=(long lhs, const edecimal& rhs) {
+	return !operator==(edecimal(lhs), rhs);
+}
+inline bool operator< (long lhs, const edecimal& rhs) {
+	return operator<(edecimal(lhs), rhs);
+}
+inline bool operator> (long lhs, const edecimal& rhs) {
+	return operator< (edecimal(lhs), rhs);
+}
+inline bool operator<=(long lhs, const edecimal& rhs) {
+	return operator< (edecimal(lhs), rhs) || operator==(edecimal(lhs), rhs);
+}
+inline bool operator>=(long lhs, const edecimal& rhs) {
+	return !operator<(edecimal(lhs), rhs);
+}
+
+///////////////////////////////////////////////////////////////////////
+// 
+// find largest multiplier of rhs being less or equal to lhs by subtraction; assumes 0*rhs <= lhs <= 9*rhs 
+edecimal findLargestMultiple(const edecimal& lhs, const edecimal& rhs) {
+	// check argument assumption	assert(0 <= lhs && lhs >= 9 * rhs);
+	edecimal remainder = lhs;
+	remainder.setpos();
+	edecimal multiplier;
+	multiplier.setdigit(0);
+	for (int i = 0; i <= 11; ++i) {  // function works for 9 into 99, just as an aside
+		if (remainder > 0) {
+			remainder -= rhs;
+			++multiplier;
+		}
+		else {
+			if (remainder < 0) {  // we went too far
+				--multiplier;
+			}
+			// else implies remainder is 0										
+			break;
+		}
+	}
+	return multiplier;
+}
+
+
+///////////////////////
+// decintdiv_t for edecimal to capture quotient and remainder during long division
+struct decintdiv {
+	edecimal quot; // quotient
+	edecimal rem;  // remainder
+};
+
+// divide integer edecimal a and b and return result argument
+decintdiv decint_divide(const edecimal& _a, const edecimal& _b) {
+	if (_b.iszero()) {
+#if EDECIMAL_THROW_ARITHMETIC_EXCEPTION
+		throw edecimal_integer_divide_by_zero{};
+#else
+		std::cerr << "integer_divide_by_zero\n";
+#endif // EDECIMAL_THROW_ARITHMETIC_EXCEPTION
+	}
+	// generate the absolute values to do long division 
+	bool a_negative = _a.sign();
+	bool b_negative = _b.sign();
+	bool result_negative = (a_negative ^ b_negative);
+	edecimal a(_a); a.setpos();
+	edecimal b(_b); b.setpos();
+	decintdiv divresult;
+	if (a < b) {
+		divresult.quot = 0;
+		divresult.rem = _a; // a % b = a when a / b = 0
+		return divresult; // a / b = 0 when b > a
+	}
+	// initialize the long division
+	edecimal accumulator = a;
+	// prepare the subtractand
+	edecimal subtractand = b;
+	int msd_b = findMsd(b);
+	int msd_a = findMsd(a);
+	int shift = msd_a - msd_b;
+	subtractand <<= shift;
+	// long division
+	for (int i = shift; i >= 0; --i) {
+		if (subtractand <= accumulator) {
+			edecimal multiple = findLargestMultiple(accumulator, subtractand);
+			accumulator -= multiple * subtractand;
+			uint8_t multiplier = static_cast<uint8_t>(int(multiple)); // TODO: fix the ugly
+			divresult.quot.insert(divresult.quot.begin(), multiplier);
+		}
+		else {
+			divresult.quot.insert(divresult.quot.begin(), 0);
+		}
+		subtractand >>= 1;
+		if (subtractand == 0) break;
+	}
+	if (result_negative) {
+		divresult.quot.setneg();
+	}
+	if (_a < 0) {
+		divresult.rem = -accumulator;
+	}
+	else {
+		divresult.rem = accumulator;
+	}
+	divresult.quot.unpad();
+	divresult.rem.unpad();
+	return divresult;
+}
+
+// return quotient of a edecimal integer division
+edecimal quotient(const edecimal& _a, const edecimal& _b) {
+	return decint_divide(_a, _b).quot;
+}
+// return remainder of a edecimal integer division
+edecimal remainder(const edecimal& _a, const edecimal& _b) {
+	return decint_divide(_a, _b).rem;
+}
+
+}} // namespace sw::universal
+

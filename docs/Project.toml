@@ -1,0 +1,10 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+UniversalNumbers = "438cb659-dcb9-46ca-8bd1-3c7a98a84c4c"
+
+[sources]
+UniversalNumbers = {path = ".."}
+
+[compat]
+Documenter = "1"
+julia = "1.11"

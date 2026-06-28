@@ -1,0 +1,23 @@
+# Git
+.git
+.gitignore
+.github
+
+# Host build artifacts (the image rebuilds these)
+build/
+**/*.so
+**/*.o
+**/*.a
+
+# Built docs
+docs/build/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Local dev notes (also gitignored)
+dev/

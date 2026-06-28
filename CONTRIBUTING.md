@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Julia ≥ 1.9
+- Julia ≥ 1.10
 - CMake ≥ 3.22
 - A C++20 compiler (GCC 10+, Clang 12+, MSVC 2019+)
 
@@ -47,11 +47,11 @@ Look up or derive the C++ template instantiation for the type you want.
 **Choosing IT (interface type):** IT must match `sizeof(CppType)`. Use the table:
 
 | Total bits | `IT` (C++) | `StorageT` (Julia) |
-|---|---|---|
-| 1–8 | `uint8_t` | `UInt8` |
-| 9–16 | `uint16_t` | `UInt16` |
-| 17–32 | `uint32_t` | `UInt32` |
-| 33–64 | `uint64_t` | `UInt64` |
+|------------|------------|--------------------|
+| 1–8        | `uint8_t`  |    `UInt8`         |
+| 9–16       | `uint16_t` |    `UInt16`        |
+| 17–32      | `uint32_t` |    `UInt32`        |
+| 33–64      | `uint64_t` |    `UInt64`        |
 
 For most types, IT equals the block type. The exception is multi-word types where the
 C++ block type is smaller than the total size (e.g. `hfp64` is 64 bits but uses
@@ -69,7 +69,7 @@ Open `src/libuniversal_wrapper.cpp` and add one line to `TYPE_REGISTRY_FULL`:
     X(posit8_0,    uint8_t,  sw::universal::posit<8, 0, uint8_t>) \
     ...
     X(cfloat16_5,  uint16_t, sw::universal::cfloat<16, 5, uint16_t, true, false, false>) \
-    X(cfloat32_7,  uint32_t, sw::universal::cfloat<32, 7, uint32_t, true, false, false>) \   // ← new
+    X(cfloat32_7,  uint32_t, sw::universal::cfloat<32, 7, uint32_t, true, false, false>) \   
     ...
 ```
 
@@ -80,7 +80,7 @@ automatically -- no other C++ changes needed.
 **Template parameter reference by family:**
 
 | Family | C++ template | Extra params |
-|---|---|---|
+|--------|--------------|--------------|
 | `Posit` | `sw::universal::posit<nbits, es, bt>` | none |
 | `CFloat` | `sw::universal::cfloat<nbits, es, bt, hasSubnormals, hasMaxExpValues, isSaturating>` | three bools; standard = `true, false, false` |
 | `LNS` | `sw::universal::lns<nbits, rbits, bt>` | none |
@@ -100,7 +100,7 @@ const TYPE_REGISTRY = [
     (:Posit,  8,  0,  "posit8_0",   UInt8),
     ...
     (:CFloat, 16, 5,  "cfloat16_5", UInt16),
-    (:CFloat, 23, 7,  "cfloat32_7", UInt32),   # ← new  (P1=N=23, P2=ES=7)
+    (:CFloat, 23, 7,  "cfloat32_7", UInt32),   # (P1=N=23, P2=ES=7)
     ...
 ]
 ```
@@ -117,7 +117,7 @@ Tuple layout: `(TypeSymbol, P1, P2, CPrefix, StorageT)`
 
 ```julia
 const TAKUM_REGISTRY = [
-    (8,  "takum8",  UInt8),    # ← new
+    (8,  "takum8",  UInt8),
     (16, "takum16", UInt16),
     (32, "takum32", UInt32),
 ]
@@ -133,14 +133,14 @@ Tuple layout: `(N, CPrefix, StorageT)`.
 # Rebuild the shared library
 cmake --build build
 
-# Quick smoke test
+# Test
 julia --project=. -e '
     include("src/UniversalNumbers.jl")
     using .UniversalNumbers
     x = CFloat{23,7}(1.5)
     println(x)                          # CFloat{23,7}(1.5)
-    println(x + CFloat{23,7}(0.5))     # CFloat{23,7}(2.0)
-    println(sqrt(CFloat{23,7}(2.0)))   # CFloat{23,7}(1.4142135...)
+    println(x + CFloat{23,7}(0.5))      # CFloat{23,7}(2.0)
+    println(sqrt(CFloat{23,7}(2.0)))    # CFloat{23,7}(1.4142135...)
     printbits(x)
 '
 
@@ -150,9 +150,11 @@ julia --project=. test/runtests.jl
 
 ### Step 5: update documentation
 
-- **`README.md`**: add a row to the Supported types table
-- **`STATUS.md`**: add a row to the Current Registry table
-- **`DIARY.md`**: add a dated entry describing what was added and any design decisions
+- **`README.md`**: add a row to the Supported types table, and note any unusual
+  semantics (e.g. no NaN/Inf, non-obvious parameter meaning) under the type notes.
+
+The maintainer keeps internal status/roadmap notes up to date separately; contributors
+only need to update the public `README.md`.
 
 ### Design note: multi-word types
 
@@ -194,12 +196,12 @@ Negation uses `data ⊻ (UInt128(1) << 63)`.
 
 ### Types not yet wrapped
 
-| Type | Reason deferred |
-|---|---|
+| Type               | Reason deferred |
+|--------------------|-----------------|
 | `qd` (quad-double) | 32-byte storage (`double x[4]`); no 32-byte Julia `Unsigned` type. Would need a custom bridge (pointer-based or `NTuple`). |
-| `rational` | Missing `color_print` (no `printbits`) and `operator++`/`--` (no `nextfloat`/`prevfloat`). Name conflicts with `Base.Rational`; would use `Frac{N}` if added. |
-| `ereal` | Variable-length heap storage (`std::vector<double>`); incompatible with the fixed-`sizeof` memcpy bridge. Requires a pointer/handle-based ABI. |
-| `integer` | Semantically an integer, not a float; subtyping `AbstractFloat` would be incorrect. |
+| `rational`         | Missing `color_print` (no `printbits`) and `operator++`/`--` (no `nextfloat`/`prevfloat`). Name conflicts with `Base.Rational`; would use `Frac{N}` if added. |
+| `ereal`            | Variable-length heap storage (`std::vector<double>`); incompatible with the fixed-`sizeof` memcpy bridge. Requires a pointer/handle-based ABI. |
+| `integer`          | Semantically an integer, not a float; subtyping `AbstractFloat` would be incorrect. |
 
 ## Updating vendored Universal headers
 
@@ -219,19 +221,18 @@ when re-vendoring `takum/`:
   `fpclassify` (upstream uses a `long double` cast)
 - `takum/math/functions/minmax.hpp` -- NaR symmetry guards in `min`/`max`
 
-## Building the JLL (Phase 2)
+## Binary library and the JLL
 
-The pre-built library is distributed as `UniversalNumbers_jll` built with
-[BinaryBuilder.jl](https://github.com/JuliaPackaging/BinaryBuilder.jl).
+The pre-built bridge library is distributed as `UniversalNumbers_jll`; installed users
+get it automatically with no C++ toolchain needed. Building from source (above) is only
+for development.
 
-```bash
-# From the BinaryBuilder environment
-julia build_tarballs.jl --target x86_64-linux-gnu
-```
+**Registration and Yggdrasil are maintainer-only.** Please do not submit recipes to
+[Yggdrasil](https://github.com/JuliaPackaging/Yggdrasil) or register the package with the
+Julia General registry yourself -- those are handled solely by the maintainer so that
+versioning, registration, and the published JLL stay in sync.
 
-Target platforms: `x86_64-linux-gnu`, `aarch64-linux-gnu`, `x86_64-apple-darwin`,
-`aarch64-apple-darwin`, `x86_64-w64-mingw32`.
-
-After a new JLL is published to the binary cache, bump the `[compat]` entry for
-`UniversalNumbers_jll` in `Project.toml` and update `src/UniversalNumbers.jl` to
-load from the JLL artifact path instead of `build/libuniversal.so`.
+If you want to improve the binary build -- the `build_tarballs.jl` recipe, a new target
+platform, a compiler flag, or a dependency bump -- **open a pull request against this
+repository.** The maintainer reviews it here and propagates the change to Yggdrasil as
+part of a coordinated release.
