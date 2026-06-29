@@ -1,7 +1,7 @@
-# test_universal.jl
+# tests.jl
 #
 # Manual test(s) / demo for a few core types.
-# Run from the project root: julia --project=. examples/test_universal.jl
+# Run from the project root: julia --project=. examples/tests.jl
 
 using UniversalNumbers
 
