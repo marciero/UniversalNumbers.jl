@@ -122,22 +122,22 @@ Posits have no `Inf` and no signed zero; instead they reserve one encoding `100.
 called **NaR** (Not-a-Real). Its semantics differ from IEEE NaN:
 
 ```julia
-julia> n = Posit{16,1}(NaN)     # NaN converts to NaR
+julia> n = Posit{16,1}(NaN)              # NaN converts to NaR
 Posit{16,1}(NaN)
 
 julia> isnan(n)
 true
 
-julia> n == n                    # NaR == NaR is TRUE (IEEE NaN: false)
+julia> n == n                            # NaR == NaR is TRUE (IEEE NaN: false)
 true
 
-julia> n < Posit{16,1}(-1e6)    # NaR sorts below every real
+julia> n < Posit{16,1}(-1e6)             # NaR sorts below every real
 true
 
-julia> isnan(n + Posit{16,1}(1.0))   # NaR is absorbing
+julia> isnan(n + Posit{16,1}(1.0))       # NaR is absorbing
 true
 
-julia> isnan(sqrt(Posit{16,1}(-1.0)))  # invalid ops produce NaR
+julia> isnan(sqrt(Posit{16,1}(-1.0)))    # invalid ops produce NaR
 true
 ```
 
@@ -269,19 +269,39 @@ Field coloring by family:
 ## Project layout
 
 ```
-src/UniversalNumbers.jl        Julia module (parametric types, ccall dispatch)
-src/libuniversal_wrapper.cpp   C ABI bridge (compiled into UniversalNumbers_jll)
-src/quire.jl                   Exact fused dot product (quire) for posits
-test/runtests.jl               Test entry point
-test/posits.jl                 Posit arithmetic, LA, adjacent-value tests
-test/takums.jl                 Takum arithmetic tests
-test/lns.jl                    LNS arithmetic tests
-test/la.jl                     Cross-family linear algebra tests
-test/printbits.jl              Bit-inspection tests
-test/broadcasting.jl           Broadcasting and array tests
-examples/linalog.jl            A few examples of linear algebra
-examples/quire.jl              Quire vs naive dot product accuracy comparison
-CONTRIBUTING.md                Adding types, building from source, JLL workflow
+UniversalNumbers.jl/
+├── src/
+│   ├── UniversalNumbers.jl        Julia module (parametric types, ccall dispatch)
+│   ├── libuniversal_wrapper.cpp   C ABI bridge (compiled into UniversalNumbers_jll)
+│   ├── quire.jl                   Exact fused dot product (quire) for posits
+│   ├── lut8.jl                    Precomputed 8-bit lookup tables
+│   ├── about.jl                   Pure-Julia bit-field decoder (printbits / about)
+│   ├── LU.jl                      Unpivoted LU factorization and solve
+│   └── QR.jl                      Givens QR factorization and solve
+├── test/
+│   ├── runtests.jl                Test entry point (full suite)
+│   ├── posits.jl                  Posit arithmetic, math, edge cases
+│   ├── takums.jl                  Takum arithmetic tests
+│   ├── lns.jl                     LNS arithmetic tests
+│   ├── la.jl                      Cross-family linear algebra tests
+│   ├── linalg_lu.jl               LU decomposition / solve tests
+│   ├── linalg_qr.jl               QR decomposition / solve tests
+│   ├── math_linalg.jl             Parametric-interface tests
+│   ├── printbits.jl               Bit-inspection tests
+│   └── broadcasting.jl            Broadcasting and array tests
+├── examples/
+│   ├── quire.jl                   Quire vs naive dot product accuracy comparison
+│   ├── chebyshev.jl               Chebyshev nodes and approximation
+│   ├── lorenz.jl                  Lorenz attractor visualization
+│   └── ...                        (18 example scripts in all)
+├── deps/universal/                Vendored Stillwater Universal C++ headers
+├── build_tarballs.jl              BinaryBuilder recipe for UniversalNumbers_jll
+├── CMakeLists.txt                 Build definition for the C++ bridge
+├── Dockerfile                     Build-from-source container image
+├── Project.toml                   Julia package manifest
+├── CONTRIBUTING.md                Adding types, building from source, JLL workflow
+├── LICENSE
+└── README.md                      (this file)
 ```
 
 ## Contributing
