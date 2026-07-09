@@ -28,6 +28,46 @@ julia --project=. test/test_printbits.jl  # bit-inspection demo
 julia --project=. test/test_la.jl         # linear algebra demo
 ```
 
+## Adding an example
+
+Example scripts live in `examples/` and run in their **own environment**
+(`examples/Project.toml`), separate from the package. This keeps example-only packages
+(plotting, solvers, matrix collections) out of the package's dependencies, so users of
+UniversalNumbers.jl never install them.
+
+**Any example package must be added with the examples environment active.** If you
+`] add` from the default or the package environment, it lands in the wrong
+`Project.toml` (a common slip).
+
+```bash
+# one-time: set up the examples environment (also links the local package)
+julia --project=examples -e 'using Pkg; Pkg.instantiate()'
+
+# add a package the example needs (note --project=examples)
+julia --project=examples -e 'using Pkg; Pkg.add("SomePackage")'
+#   or in a REPL:  `julia --project=examples`  then  `] add SomePackage`
+#   the Pkg prompt must read  (examples) pkg>
+
+# write examples/my_example.jl, then run it against the examples env
+julia --project=examples examples/my_example.jl
+```
+
+**In VS Code (Julia extension):** in the integrated Julia REPL, run `] activate examples`
+once. From then on every `] add SomePackage` (and `using SomePackage`) updates
+`examples/Project.toml`. Confirm the Pkg prompt reads `(examples) pkg>`. Alternatively,
+click the environment name in the VS Code status bar (bottom of the window) and select
+the `examples` folder, which activates it for the REPL.
+
+In the script, load the package alongside whatever the example needs:
+
+```julia
+using UniversalNumbers, SomePackage       # UniversalNumbers is linked via [sources]
+```
+
+You never add `UniversalNumbers` yourself; `examples/Project.toml` already pulls in the
+local package via `[sources]`. Commit `examples/Project.toml` and your script.
+`examples/Manifest.toml` is gitignored, so leave it out.
+
 ## Adding a new type -- worked example
 
 This section walks through adding `CFloat{23,7}` (a 32-bit classic float with 7 exponent

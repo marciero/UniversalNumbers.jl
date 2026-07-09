@@ -1,6 +1,12 @@
 # <img src="universalnumbers.svg" width="45" height="45" align="absmiddle"/> UniversalNumbers.jl
 
 [![CI](https://github.com/jamesquinlan/UniversalNumbers.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/jamesquinlan/UniversalNumbers.jl/actions/workflows/ci.yml)
+<!-- DOI badge after Zenodo archives the v0.1.0 release, replace XXXXXXX with the (concept) DOI and uncomment:
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+-->
+[![codecov](https://codecov.io/gh/jamesquinlan/UniversalNumbers.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/jamesquinlan/UniversalNumbers.jl)
+[![Aqua](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
+
 
 Julia bindings for the [Stillwater Universal](https://github.com/stillwater-sc/universal)
 C++ number-systems library. Exposes **posits**, **classic floats (cfloat)**,
@@ -15,13 +21,15 @@ and compose with the standard library.
 pkg> add UniversalNumbers
 ```
 
-Requires Julia ≥ 1.10. The pre-built bridge library is downloaded automatically via
-`UniversalNumbers_jll`; no C++ compiler or CMake is needed.
+Requires [Julia](https://julialang.org/downloads/) ≥ 1.10 (install it with `juliaup` or
+a platform installer from the [downloads page](https://julialang.org/downloads/)). The
+pre-built bridge library is downloaded automatically via `UniversalNumbers_jll`; no C++
+compiler or CMake is needed.
 
 ### Docker (build from source)
 
 A [`Dockerfile`](Dockerfile) builds the C++ bridge and a ready-to-use Julia
-environment — no local C++ toolchain or Julia install needed:
+environment, so no local C++ toolchain or Julia install is needed:
 
 ```bash
 docker build -t universalnumbers .
@@ -333,6 +341,15 @@ Yggdrasil directly.
 ## References and Citations (bibTeX)
 
 ```bibtex
+
+% --- Cite this package ---
+@software{universalnumbers_jl,
+  author  = {Quinlan, James and Arciero, Mike},
+  title   = {{UniversalNumbers.jl}: Next-generation computer arithmetic in {Julia}},
+  year    = {2026},
+  url     = {https://github.com/jamesquinlan/UniversalNumbers.jl},
+  note    = {Julia package. TODO: add Zenodo DOI and/or JOSS paper once published}
+}
 
 @article{gustafson2017beating,
   title   = {Beating Floating Point at its Own Game: Posit Arithmetic},

@@ -9,4 +9,4 @@ A = SparseMatrixCSC{T, Int64}(matrixdepot(sp(6))) # ID=6 is arc130 (Harwell-Boei
 L, U = UniversalNumbers.LU.lu(A);
 
 # and we have: 
-L*U â‰ˆ A
+@show L*U ≈ A

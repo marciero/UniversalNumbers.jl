@@ -965,3 +965,23 @@ include("math_linalg.jl")
 include("posits.jl")
 include("printbits.jl")
 include("takums.jl")
+
+# ---------------------------------------------------------------------------
+# Aqua.jl quality assurance. Aqua is a test-only dependency ([extras]), so this
+# block is guarded: `julia --project=. test/runtests.jl` still runs when Aqua is
+# not in the base environment; it runs the checks under `Pkg.test()`.
+# `ambiguities=false` skips the known, benign parametric-constructor vs. Base
+# ambiguities (tracked in dev/TODO.md); all other checks run (stale deps,
+# deps/compat, piracy, undefined exports, project extras).
+# ---------------------------------------------------------------------------
+if isempty(VERSION.prerelease)   # skip on nightly, where Aqua may not precompile
+    try
+        @eval using Aqua
+        @testset "Aqua quality assurance" begin
+            Aqua.test_all(UniversalNumbers; ambiguities = false)
+        end
+    catch err
+        err isa ArgumentError || rethrow()
+        @info "Aqua not installed here; skipping QA tests (run via `Pkg.test()` to include them)."
+    end
+end

@@ -31,3 +31,9 @@ docs/dev/
 
 # Others
 
+# BinaryBuilder output (local build_tarballs runs)
+products/
+
+# Backup files
+*.backup
+

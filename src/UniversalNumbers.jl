@@ -4,15 +4,21 @@ using Libdl
 using LinearAlgebra
 using Random
 using SparseArrays
+using UniversalNumbers_jll
 
 include("LU.jl")
 include("QR.jl")
 
-const LIB_PATH = joinpath(@__DIR__, "..", "build", "libuniversal." * Libdl.dlext)
+# A locally built library (`build/libuniversal.*`) takes precedence when present,
+# so wrapper/C++ changes can be tested without republishing the JLL. Installed
+# users have no `build/`, so they load the precompiled `UniversalNumbers_jll` binary.
+const LOCAL_LIB = joinpath(@__DIR__, "..", "build", "libuniversal." * Libdl.dlext)
 const LIB_HANDLE = Ref{Ptr{Nothing}}(C_NULL)
 
+_lib_path() = isfile(LOCAL_LIB) ? LOCAL_LIB : UniversalNumbers_jll.libuniversal
+
 function __init__()
-    LIB_HANDLE[] = dlopen(LIB_PATH)
+    LIB_HANDLE[] = dlopen(_lib_path())
     redirect_stderr(devnull) do
         _init_luts!()
     end
@@ -23,7 +29,7 @@ const SYM_CACHE = Dict{Symbol, Ptr{Nothing}}()
 function get_sym(sym::Symbol)
     get!(SYM_CACHE, sym) do
         if LIB_HANDLE[] == C_NULL
-            LIB_HANDLE[] = dlopen(LIB_PATH)
+            LIB_HANDLE[] = dlopen(_lib_path())
         end
         try
             dlsym(LIB_HANDLE[], sym)

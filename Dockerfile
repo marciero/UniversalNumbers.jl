@@ -2,9 +2,9 @@
 #
 # Compiles the C++ bridge (libuniversal) against the vendored Stillwater
 # Universal headers, resolves and precompiles the Julia environment, and drops
-# you into a project REPL with all number types ready. Useful until
-# UniversalNumbers_jll ships (no host C++ toolchain needed), for reproducing CI,
-# and for reviewers who want a one-command working environment.
+# you into a project REPL with all number types ready. Useful for building from
+# source (no host C++ toolchain needed), reproducing CI, and for reviewers who
+# want a one-command working environment.
 #
 #   docker build -t universalnumbers .
 #   docker run --rm -it universalnumbers                                  # Julia REPL with the package
