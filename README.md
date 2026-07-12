@@ -337,13 +337,14 @@ library automatically via `UniversalNumbers_jll`. Prerequisites:
 
 - Julia ≥ 1.10
 - CMake ≥ 3.20
-- A C++20 compiler (GCC 10+, Clang 12+, MSVC 2019+)
+- A C++23 compiler (GCC 12+, Clang 15+, MSVC 2022+)
 
 ```bash
 git clone https://github.com/jamesquinlan/UniversalNumbers.jl
 cd UniversalNumbers.jl
-cmake -S . -B build && cmake --build build   # builds build/libuniversal.so
-julia --project=. test/runtests.jl           # run the test suite
+cmake -S . -B build && cmake --build build            # builds build/libuniversal.so
+julia --project=. -e 'using Pkg; Pkg.instantiate()'   # resolve/download deps
+julia --project=. test/runtests.jl                    # run the test suite
 ```
 
 When running from source the module loads `build/libuniversal.so` directly; the installed
