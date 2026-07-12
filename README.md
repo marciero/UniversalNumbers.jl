@@ -357,6 +357,26 @@ Yggdrasil directly.
 
 ```bibtex
 
+% --- Cite this package ---
+@software{universalnumbers_jl,
+  author  = {Quinlan, James and Arciero, Mike},
+  title   = {{UniversalNumbers.jl}: Next-generation computer arithmetic in {Julia}},
+  year    = {2026},
+  url     = {https://github.com/jamesquinlan/UniversalNumbers.jl},
+  note    = {Julia package. Coming Soon: Zenodo DOI and/or JOSS paper if published}
+}
+
+% --- Please also cite this package ---
+@article{omtzigt2023universal,
+  title={Universal Numbers Library: Multi-format Variable Precision Arithmetic Library},
+  author={Omtzigt, E Theodore L and Quinlan, James},
+  journal={Journal of Open Source Software},
+  volume={8},
+  number={83},
+  pages={5072},
+  year={2023}
+}
+
 @article{gustafson2017beating,
   title   = {Beating Floating Point at its Own Game: Posit Arithmetic},
   author  = {Gustafson, John L. and Yonemoto, Isaac},
@@ -391,16 +411,6 @@ Yggdrasil directly.
   title   = {Julia: A Fresh Approach to Numerical Computing},
   journal = {SIAM Review},
   year    = {2017}
-}
-
-@article{omtzigt2023universal,
-  title={Universal Numbers Library: Multi-format Variable Precision Arithmetic Library},
-  author={Omtzigt, E Theodore L and Quinlan, James},
-  journal={Journal of Open Source Software},
-  volume={8},
-  number={83},
-  pages={5072},
-  year={2023}
 }
 
 @techreport{positstandard2022,
