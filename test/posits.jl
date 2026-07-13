@@ -62,6 +62,52 @@ const HPREC_POSITS = (Posit{32,2}, Posit{64,2}, Posit{64,3})
     end
 
     # ------------------------------------------------------------------
+    # README "Posit number-system properties": one zero, one NaR, no -0, no Inf.
+    # (Reciprocal and sign symmetry are checked below in "Posit symmetry".)
+    @testset "One zero, one NaR (no -0, no Inf) -- $T" for T in ALL_POSITS
+        # No negative zero: -0.0 collapses to the single +0 encoding.
+        @test iszero(T(-0.0))
+        @test T(-0.0).data == T(0.0).data
+
+        # No Inf: infinities map to NaR, and isinf is never true.
+        @test isnan(T(Inf))
+        @test isnan(T(-Inf))
+        @test !isinf(T(1.0))
+        @test !isinf(T(0.0))
+
+        # One NaR: self-negating (its own 2's complement) and distinct from zero.
+        @test isnan(-T(NaN))
+        @test T(NaN).data != T(0.0).data
+    end
+
+    # NaR encoding documented in the README: sign bit set, all else zero.
+    @testset "NaR bit pattern" begin
+        @test Posit{16,1}(NaN).data == 0x8000
+    end
+
+    # ------------------------------------------------------------------
+    # README "Posit number-system properties": reciprocal symmetry
+    # (floatmin*floatmax == 1), maxpos = useed^(nbits-2), and sign symmetry.
+    @testset "Posit symmetry (dynamic range)" begin
+        for (T, nbits, es) in (
+                (Posit{8,0},   8,  0),
+                (Posit{16,1},  16, 1),
+                (Posit{16,2},  16, 2),
+                (Posit{32,2},  32, 2),
+                (Posit{19,3},  19, 3),
+                (Posit{19,2},  19, 2),
+                (Posit{64,2},  64, 2),
+                (Posit{64,3},  64, 3))
+            lo, hi = Float64(floatmin(T)), Float64(floatmax(T))
+            useed = 2.0^(2^es)
+            @test lo * hi == 1.0
+            @test hi == useed^(nbits - 2)
+            @test Float64(-T(hi)) == -hi
+            @test Float64(-T(lo)) == -lo
+        end
+    end
+
+    # ------------------------------------------------------------------
     @testset "Constants and predicates -- $T" for T in ALL_POSITS
         @test iszero(zero(T))
         @test isone(one(T))

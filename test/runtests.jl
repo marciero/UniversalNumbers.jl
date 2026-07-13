@@ -64,9 +64,6 @@ using Random
         @test Float64(log(Posit{16,2}(1.0))) == 0.0
         @test isnan(Posit{16,2}(NaN))
         @test !isnan(Posit{16,2}(1.0))
-        # useed = 2^(2^2) = 16; reciprocal symmetry
-        lo, hi = Float64(floatmin(Posit{16,2})), Float64(floatmax(Posit{16,2}))
-        @test lo * hi == 1.0
     end
 
     # -----------------------------------------------------------------------
@@ -200,28 +197,6 @@ using Random
         @test string(Posit{16,1}(1.5)) == "Posit{16,1}(1.5)"
         @test string(Takum{16}(1.5))   == "Takum{16}(1.5)"
         @test string(DD(1.5))          == "DD(1.5)"
-    end
-
-    # -----------------------------------------------------------------------
-    # Posit symmetry (dynamic range)
-    # -----------------------------------------------------------------------
-    @testset "Posit symmetry (dynamic range)" begin
-        for (T, nbits, es) in (
-                (Posit{8,0},   8,  0),
-                (Posit{16,1},  16, 1),
-                (Posit{16,2},  16, 2),
-                (Posit{32,2},  32, 2),
-                (Posit{19,3},  19, 3),
-                (Posit{19,2},  19, 2),
-                (Posit{64,2},  64, 2),
-                (Posit{64,3},  64, 3))
-            lo, hi = Float64(floatmin(T)), Float64(floatmax(T))
-            useed = 2.0^(2^es)
-            @test lo * hi == 1.0
-            @test hi == useed^(nbits - 2)
-            @test Float64(-T(hi)) == -hi
-            @test Float64(-T(lo)) == -lo
-        end
     end
 
     # -----------------------------------------------------------------------
