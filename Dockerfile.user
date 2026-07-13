@@ -1,0 +1,41 @@
+# User image for UniversalNumbers.jl
+#
+# Pulls OS + Julia, then installs UniversalNumbers straight from the Julia
+# General registry -- so the C++ bridge arrives as the prebuilt UniversalNumbers_jll
+# binary and NO C++ toolchain (cmake/g++) is needed. It also preloads the packages
+# the bundled examples use and copies the example scripts in, so the image is ready
+# to run experiments and to add more packages as you go.
+#
+#   docker build -f Dockerfile.user -t universalnumbers:user .
+#   docker run --rm -it universalnumbers:user                              # Julia REPL, package ready
+#   docker run --rm -it universalnumbers:user julia examples/quire.jl      # run a bundled example
+#
+# Adding packages interactively (`] add Foo`) writes into the image's environment at
+# /opt/experiments. With --rm those additions vanish when the container exits; to
+# keep them, either add the package here in this file (rebuild), mount a volume at
+# the Julia depot, or `docker commit` the container into a new image.
+#
+# NOTE: run examples as `julia examples/<name>.jl` (the default project is preset
+# below). Do NOT use `--project=examples` in this image; that project expects a
+# from-source build (see Dockerfile), not the registry package.
+
+FROM julia:1.11-bookworm
+
+# A writable default environment for examples and experiments.
+ENV JULIA_PROJECT=/opt/experiments
+WORKDIR /opt/experiments
+
+# Example scripts only (not the package source; the package comes from the registry).
+COPY examples/*.jl ./examples/
+
+# Registry package (pulls the JLL binary) plus the example dependencies.
+RUN julia -e 'using Pkg; Pkg.add([ \
+      "UniversalNumbers", \
+      "IterativeSolvers", "IncompleteLU", "MatrixDepot", \
+      "AlgebraicMultigrid", "Plots" \
+    ]); Pkg.precompile()'
+
+# Smoke-test: the registry binary loads and arithmetic works.
+RUN julia -e 'using UniversalNumbers; @assert Float64(Posit{16,1}(1.5) + Posit{16,1}(2.5)) == 4.0; println("UniversalNumbers.jl (registry) ready")'
+
+CMD ["julia"]
